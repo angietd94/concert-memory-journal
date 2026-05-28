@@ -8,7 +8,10 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.angelicat.concertjournal"
+      "bundleIdentifier": "com.angelicat.concertjournal",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -26,6 +29,12 @@
       "expo-router",
       "react-native-iap"
     ],
-    "scheme": "concert-memory-journal"
+    "scheme": "concert-memory-journal",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "575c7d70-5fab-40be-a03d-40859a6fdb41"
+      }
+    }
   }
 }
