@@ -109,7 +109,7 @@ export default function App() {
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Concert Memory Journal</Text>
           <Text style={styles.subtitle}>
-            Letterboxd for live music {isPremium ? '· Premium' : `· ${concerts.length}/${FREE_TIER_LIMIT} free`}
+            Your live music diary {isPremium ? '· Premium' : `· ${concerts.length}/${FREE_TIER_LIMIT} free`}
           </Text>
         </View>
         <TouchableOpacity style={styles.addButton} onPress={handleAddPress}>
