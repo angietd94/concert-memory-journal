@@ -3,9 +3,12 @@ import { useState, useEffect } from 'react';
 import {
   StyleSheet, Text, View, SafeAreaView, TouchableOpacity,
   FlatList, Modal, TextInput, Alert, ScrollView,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useIapManager, SUBSCRIPTION_SKUS, LIFETIME_SKU } from './useIap';
+import { SearchablePicker, CalendarPicker } from './pickers';
+import { ARTISTS, VENUES } from './data';
 
 type Concert = {
   id: string;
@@ -22,20 +25,21 @@ const FREE_TIER_LIMIT = 3;
 
 export default function App() {
   const [concerts, setConcerts] = useState<Concert[]>([]);
-  const [isPremium, setIsPremium] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [paywallVisible, setPaywallVisible] = useState(false);
+  const [picker, setPicker] = useState<null | 'artist' | 'venue' | 'date'>(null);
   const [draft, setDraft] = useState<Omit<Concert, 'id'>>({
     artist: '', venue: '', date: '', rating: 0, notes: '',
   });
 
-  // Load saved state on app start
+  // PHASE A.2: real IAP. Entitlement now comes from the store, not a local flag.
+  const { offers, isPremium, loading: iapLoading, purchase, restore, lastError, debug } =
+    useIapManager();
+
+  // Load saved concerts on app start
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
       if (raw) { try { setConcerts(JSON.parse(raw)); } catch {} }
-    });
-    AsyncStorage.getItem(PREMIUM_KEY).then((raw) => {
-      if (raw === 'true') setIsPremium(true);
     });
   }, []);
 
@@ -44,13 +48,38 @@ export default function App() {
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(concerts));
   }, [concerts]);
 
-  // Persist premium status
+  // Close the paywall automatically once the user becomes premium.
   useEffect(() => {
-    AsyncStorage.setItem(PREMIUM_KEY, isPremium ? 'true' : 'false');
+    if (isPremium) setPaywallVisible(false);
   }, [isPremium]);
+
+  // Surface IAP errors to the user.
+  useEffect(() => {
+    if (lastError) Alert.alert('Purchase problem', lastError);
+  }, [lastError]);
+
+  // Helper: localized price for a given SKU, falling back to a sensible default.
+  function priceFor(sku: string, fallback: string) {
+    return offers.find((o) => o.sku === sku)?.price ?? fallback;
+  }
 
   function resetDraft() {
     setDraft({ artist: '', venue: '', date: '', rating: 0, notes: '' });
+  }
+
+  function handleDelete(concert: Concert) {
+    Alert.alert(
+      'Delete concert?',
+      `Remove "${concert.artist}" from your journal? This can't be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => setConcerts((prev) => prev.filter((c) => c.id !== concert.id)),
+        },
+      ],
+    );
   }
 
   function handleAddPress() {
@@ -72,23 +101,6 @@ export default function App() {
     setConcerts([{ id: Date.now().toString(), ...draft }, ...concerts]);
     resetDraft();
     setModalVisible(false);
-  }
-
-  // STUBS for Phase A.2 — when real react-native-iap is wired up, these
-  // call requestSubscription / requestPurchase / getAvailablePurchases.
-  function stubPurchase(productId: string) {
-    Alert.alert(
-      'Phase A.1 stub',
-      `Would purchase "${productId}".\nIn A.2 this calls react-native-iap.requestSubscription({ sku }).`,
-      [{ text: 'Pretend it worked', onPress: () => { setIsPremium(true); setPaywallVisible(false); } }],
-    );
-  }
-  function stubRestore() {
-    Alert.alert(
-      'Phase A.1 stub',
-      'Would call react-native-iap.getAvailablePurchases() and reconcile against active subscriptions.',
-      [{ text: 'Pretend you had premium', onPress: () => { setIsPremium(true); setPaywallVisible(false); } }],
-    );
   }
 
   return (
@@ -117,7 +129,12 @@ export default function App() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
-            <View style={styles.card}>
+            <TouchableOpacity
+              style={styles.card}
+              activeOpacity={0.7}
+              onLongPress={() => handleDelete(item)}
+              delayLongPress={350}
+            >
               <Text style={styles.cardArtist}>{item.artist}</Text>
               <Text style={styles.cardVenue}>{item.venue}</Text>
               <View style={styles.cardMeta}>
@@ -127,7 +144,7 @@ export default function App() {
                 </Text>
               </View>
               {item.notes ? <Text style={styles.cardNotes}>{item.notes}</Text> : null}
-            </View>
+            </TouchableOpacity>
           )}
         />
       )}
@@ -147,11 +164,23 @@ export default function App() {
             </View>
             <ScrollView style={styles.modalBody} contentContainerStyle={{ paddingBottom: 60 }}>
               <Text style={styles.label}>Artist</Text>
-              <TextInput style={styles.input} placeholder="e.g. Phoebe Bridgers" value={draft.artist} onChangeText={(t) => setDraft({ ...draft, artist: t })} />
+              <TouchableOpacity style={[styles.input, styles.selectInput]} onPress={() => setPicker('artist')}>
+                <Text style={draft.artist ? styles.selectValue : styles.selectPlaceholder}>
+                  {draft.artist || 'Select or type an artist'}
+                </Text>
+              </TouchableOpacity>
               <Text style={styles.label}>Venue</Text>
-              <TextInput style={styles.input} placeholder="e.g. The Greek Theatre" value={draft.venue} onChangeText={(t) => setDraft({ ...draft, venue: t })} />
+              <TouchableOpacity style={[styles.input, styles.selectInput]} onPress={() => setPicker('venue')}>
+                <Text style={draft.venue ? styles.selectValue : styles.selectPlaceholder}>
+                  {draft.venue || 'Select or type a venue'}
+                </Text>
+              </TouchableOpacity>
               <Text style={styles.label}>Date</Text>
-              <TextInput style={styles.input} placeholder="YYYY-MM-DD" value={draft.date} onChangeText={(t) => setDraft({ ...draft, date: t })} />
+              <TouchableOpacity style={[styles.input, styles.selectInput]} onPress={() => setPicker('date')}>
+                <Text style={draft.date ? styles.selectValue : styles.selectPlaceholder}>
+                  {draft.date || 'Select a date'}
+                </Text>
+              </TouchableOpacity>
               <Text style={styles.label}>Rating</Text>
               <View style={styles.starsRow}>
                 {[1, 2, 3, 4, 5].map((n) => (
@@ -165,6 +194,31 @@ export default function App() {
             </ScrollView>
           </SafeAreaView>
         </KeyboardAvoidingView>
+
+        {/* Pickers render INSIDE this modal as absolute overlays. Stacking a
+            second RN Modal over the form Modal is unreliable on iOS (the second
+            silently fails to appear), so SearchablePicker/CalendarPicker are
+            plain absolute-positioned views, not Modals. */}
+        <SearchablePicker
+          visible={picker === 'artist'}
+          title="Choose artist"
+          options={ARTISTS}
+          onSelect={(v) => { setDraft((d) => ({ ...d, artist: v })); setPicker(null); }}
+          onClose={() => setPicker(null)}
+        />
+        <SearchablePicker
+          visible={picker === 'venue'}
+          title="Choose venue"
+          options={VENUES}
+          onSelect={(v) => { setDraft((d) => ({ ...d, venue: v })); setPicker(null); }}
+          onClose={() => setPicker(null)}
+        />
+        <CalendarPicker
+          visible={picker === 'date'}
+          value={draft.date}
+          onSelect={(v) => { setDraft((d) => ({ ...d, date: v })); setPicker(null); }}
+          onClose={() => setPicker(null)}
+        />
       </Modal>
 
       {/* PAYWALL MODAL */}
@@ -177,34 +231,41 @@ export default function App() {
               Upgrade to Premium for unlimited entries, photo attachments, and stats.
             </Text>
 
-            <TouchableOpacity style={[styles.product, styles.productHighlight]} onPress={() => stubPurchase('cmj.premium.annual')}>
+            {iapLoading ? (
+              <ActivityIndicator style={{ marginVertical: 24 }} />
+            ) : null}
+
+            {/* TEMP diagnostic (disabled for shipping). Re-enable for debugging:
+            <Text style={styles.debugLine}>{debug}</Text> */}
+
+            <TouchableOpacity style={[styles.product, styles.productHighlight]} onPress={() => purchase('cmj.premium.annual')}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.productTitle}>Premium Annual</Text>
-                <Text style={styles.productSub}>$19.99 / year · 7-day free trial</Text>
+                <Text style={styles.productSub}>{priceFor('cmj.premium.annual', '$19.99')} / year · 7-day free trial</Text>
               </View>
               <Text style={styles.productBadge}>BEST VALUE</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.product} onPress={() => stubPurchase('cmj.premium.monthly')}>
+            <TouchableOpacity style={styles.product} onPress={() => purchase('cmj.premium.monthly')}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.productTitle}>Premium Monthly</Text>
-                <Text style={styles.productSub}>$2.99 / month</Text>
+                <Text style={styles.productSub}>{priceFor('cmj.premium.monthly', '$2.99')} / month · 7-day free trial</Text>
               </View>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.product} onPress={() => stubPurchase('cmj.premium.lifetime')}>
+            <TouchableOpacity style={styles.product} onPress={() => purchase('cmj.premium.lifetime')}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.productTitle}>Premium Lifetime</Text>
-                <Text style={styles.productSub}>$49.99 once</Text>
+                <Text style={styles.productSub}>{priceFor('cmj.premium.lifetime', '$49.99')} once</Text>
               </View>
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={stubRestore}>
+            <TouchableOpacity onPress={restore}>
               <Text style={styles.restoreLink}>Restore Purchases</Text>
             </TouchableOpacity>
 
             <Text style={styles.legal}>
-              Subscriptions auto-renew. Cancel anytime in Settings. (Apple requires this disclaimer — A.2 pain log entry.)
+              Subscriptions auto-renew. Cancel anytime in Settings.
             </Text>
 
             <TouchableOpacity onPress={() => setPaywallVisible(false)}>
@@ -249,6 +310,9 @@ const styles = StyleSheet.create({
   modalBody: { flex: 1, paddingHorizontal: 20, paddingTop: 16 },
   label: { fontSize: 13, fontWeight: '600', color: '#444', marginTop: 16, marginBottom: 6 },
   input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16 },
+  selectInput: { minHeight: 44, justifyContent: 'center' },
+  selectValue: { fontSize: 16, color: '#111' },
+  selectPlaceholder: { fontSize: 16, color: '#aaa' },
   textArea: { height: 100, textAlignVertical: 'top' },
   starsRow: { flexDirection: 'row', gap: 8 },
   star: { fontSize: 32, color: '#f59e0b' },
@@ -266,4 +330,5 @@ const styles = StyleSheet.create({
   restoreLink: { fontSize: 14, color: '#007aff', marginTop: 16, fontWeight: '500' },
   legal: { fontSize: 11, color: '#999', textAlign: 'center', marginTop: 24, lineHeight: 16, paddingHorizontal: 8 },
   closeLink: { fontSize: 14, color: '#888', marginTop: 24 },
+  debugLine: { fontSize: 11, color: '#c026d3', textAlign: 'center', marginBottom: 12, paddingHorizontal: 12 },
 });
