@@ -33,7 +33,7 @@ export default function App() {
   });
 
   // PHASE A.2: real IAP. Entitlement now comes from the store, not a local flag.
-  const { offers, isPremium, loading: iapLoading, purchase, restore, lastError, debug } =
+  const { offers, isPremium, loading: iapLoading, purchase, restore, manageSubscriptions, lastError, debug } =
     useIapManager();
 
   // Load saved concerts on app start
@@ -263,6 +263,10 @@ export default function App() {
             <TouchableOpacity onPress={restore}>
               <Text style={styles.restoreLink}>Restore Purchases</Text>
             </TouchableOpacity>
+            <TouchableOpacity onPress={manageSubscriptions}>
+              <Text style={styles.restoreLink}>Manage Subscription</Text>
+            </TouchableOpacity>
+
 
             <Text style={styles.legal}>
               Subscriptions auto-renew. Cancel anytime in Settings.

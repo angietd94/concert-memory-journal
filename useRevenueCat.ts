@@ -1,8 +1,6 @@
 // useRevenueCat.ts — Phase C: RevenueCat-backed entitlement.
 // Drop-in replacement for useIap.ts: exports the SAME `useIapManager` interface
-// so App.tsx only changes its import path. (~70 lines vs useIap.ts's 203 — and
-// this version gets server-side receipt validation, lifecycle, and entitlements
-// for free via RevenueCat's backend, which useIap.ts never did.)
+// so App.tsx only changes its import path.
 import { useEffect, useState, useCallback } from 'react';
 import Purchases, {
   LOG_LEVEL,
@@ -10,14 +8,12 @@ import Purchases, {
   CustomerInfo,
 } from 'react-native-purchases';
 
-// Public SDK key. Test Store key for Phase C; swap for the appl_ key in production.
-const RC_API_KEY = 'test_WIfXLkknvvmRyNpUbUxSMDkkdRn';
+// Public SDK key (real App Store key).
+const RC_API_KEY = 'appl_oJqJyoKVTIEFJzDpvWTiOxiELtF';
 
-// Same SKU constants App.tsx imports.
 export const SUBSCRIPTION_SKUS = ['cmj.premium.monthly', 'cmj.premium.annual'];
 export const LIFETIME_SKU = 'cmj.premium.lifetime';
 
-// Map App.tsx's SKU strings to RevenueCat package types.
 const SKU_TO_PACKAGE_TYPE: Record<string, string> = {
   'cmj.premium.annual': 'ANNUAL',
   'cmj.premium.monthly': 'MONTHLY',
@@ -34,7 +30,6 @@ export function useIapManager() {
   const [loading, setLoading] = useState(true);
   const [lastError, setLastError] = useState<string | null>(null);
 
-  // THE entitlement check — any active entitlement unlocks premium. One line.
   const applyCustomerInfo = useCallback((info: CustomerInfo) => {
     setIsPremium(Object.keys(info.entitlements.active).length > 0);
   }, []);
@@ -96,9 +91,19 @@ export function useIapManager() {
     }
   }, [applyCustomerInfo]);
 
+  // Opens Apple's native manage/cancel/switch-subscription screen. One line.
+  const manageSubscriptions = useCallback(async () => {
+    setLastError(null);
+    try {
+      await Purchases.showManageSubscriptions();
+    } catch (e: any) {
+      setLastError(e?.message ?? 'Could not open subscription management');
+    }
+  }, []);
+
   const debug =
     `[RC] premium=${isPremium} · offers=${offers.length}` +
     (lastError ? ` · err=${lastError}` : '');
 
-  return { offers, isPremium, loading, purchase, restore, lastError, debug };
+  return { offers, isPremium, loading, purchase, restore, manageSubscriptions, lastError, debug };
 }
