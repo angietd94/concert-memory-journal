@@ -6,7 +6,7 @@ import {
   KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useIapManager, SUBSCRIPTION_SKUS, LIFETIME_SKU } from './useIap';
+import { useIapManager, SUBSCRIPTION_SKUS, LIFETIME_SKU } from './useRevenueCat';
 import { SearchablePicker, CalendarPicker } from './pickers';
 import { ARTISTS, VENUES } from './data';
 
