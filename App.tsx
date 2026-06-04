@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import {
   StyleSheet, Text, View, SafeAreaView, TouchableOpacity,
   FlatList, Modal, TextInput, Alert, ScrollView,
-  KeyboardAvoidingView, Platform, ActivityIndicator,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Linking,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useIapManager, SUBSCRIPTION_SKUS, LIFETIME_SKU } from './useRevenueCat';
@@ -22,6 +22,10 @@ type Concert = {
 const STORAGE_KEY = '@cmj:concerts';
 const PREMIUM_KEY = '@cmj:isPremium';
 const FREE_TIER_LIMIT = 3;
+
+// Legal links required by App Store Guideline 3.1.2(c) for auto-renewable subs.
+const PRIVACY_URL = 'https://angietd94.github.io/concert-memory-journal/privacy-policy.html';
+const EULA_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
 
 export default function App() {
   const [concerts, setConcerts] = useState<Concert[]>([]);
@@ -195,10 +199,6 @@ export default function App() {
           </SafeAreaView>
         </KeyboardAvoidingView>
 
-        {/* Pickers render INSIDE this modal as absolute overlays. Stacking a
-            second RN Modal over the form Modal is unreliable on iOS (the second
-            silently fails to appear), so SearchablePicker/CalendarPicker are
-            plain absolute-positioned views, not Modals. */}
         <SearchablePicker
           visible={picker === 'artist'}
           title="Choose artist"
@@ -235,9 +235,6 @@ export default function App() {
               <ActivityIndicator style={{ marginVertical: 24 }} />
             ) : null}
 
-            {/* TEMP diagnostic (disabled for shipping). Re-enable for debugging:
-            <Text style={styles.debugLine}>{debug}</Text> */}
-
             <TouchableOpacity style={[styles.product, styles.productHighlight]} onPress={() => purchase('cmj.premium.annual')}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.productTitle}>Premium Annual</Text>
@@ -267,10 +264,23 @@ export default function App() {
               <Text style={styles.restoreLink}>Manage Subscription</Text>
             </TouchableOpacity>
 
-
+            {/* App Store Guideline 3.1.2(c): subscription terms + functional links
+                to the Terms of Use (EULA) and Privacy Policy, on the purchase screen. */}
             <Text style={styles.legal}>
-              Subscriptions auto-renew. Cancel anytime in Settings.
+              Premium Monthly ({priceFor('cmj.premium.monthly', '$2.99')}/month) and Premium Annual
+              ({priceFor('cmj.premium.annual', '$19.99')}/year) are auto-renewable subscriptions.
+              Your subscription renews automatically unless cancelled at least 24 hours before the
+              end of the current period. Manage or cancel anytime in your App Store account settings.
             </Text>
+            <View style={styles.legalLinks}>
+              <Text style={styles.legalLink} onPress={() => Linking.openURL(EULA_URL)}>
+                Terms of Use (EULA)
+              </Text>
+              <Text style={styles.legalDot}>·</Text>
+              <Text style={styles.legalLink} onPress={() => Linking.openURL(PRIVACY_URL)}>
+                Privacy Policy
+              </Text>
+            </View>
 
             <TouchableOpacity onPress={() => setPaywallVisible(false)}>
               <Text style={styles.closeLink}>Maybe later</Text>
@@ -333,6 +343,9 @@ const styles = StyleSheet.create({
   productBadge: { fontSize: 11, fontWeight: '700', color: '#fff', backgroundColor: '#111', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
   restoreLink: { fontSize: 14, color: '#007aff', marginTop: 16, fontWeight: '500' },
   legal: { fontSize: 11, color: '#999', textAlign: 'center', marginTop: 24, lineHeight: 16, paddingHorizontal: 8 },
+  legalLinks: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 10 },
+  legalLink: { fontSize: 12, color: '#007aff', textDecorationLine: 'underline' },
+  legalDot: { fontSize: 12, color: '#999', marginHorizontal: 6 },
   closeLink: { fontSize: 14, color: '#888', marginTop: 24 },
   debugLine: { fontSize: 11, color: '#c026d3', textAlign: 'center', marginBottom: 12, paddingHorizontal: 12 },
 });
